@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image to Doc</title>
+<style>
+  :root {
+    --bg: #eceff2; --surface: #f8fafb; --paper: #fff; --ink: #16212b; --muted: #55636f;
+    --line: #d0d8df; --accent: #0b6e69; --accent-ink: #fff; --accent-soft: #d6edeb; --danger: #9c2f2f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1317; --surface: #141c22; --paper: #1a242b; --ink: #e6edf2; --muted: #94a2ae;
+      --line: #2b3740; --accent: #4cc2b8; --accent-ink: #04201e; --accent-soft: #143633; --danger: #f08a8a;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 16px 48px; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 "Segoe UI", "Nirmala UI", system-ui, -apple-system, sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+  h1 { margin: 0 0 6px; font-size: clamp(1.8rem, 4.5vw, 2.5rem); letter-spacing: -0.02em; line-height: 1.1; }
+  .sub { margin: 0; color: var(--muted); max-width: 60ch; }
+  .bench { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+  .panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  h2 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+  .mono { font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
+  .drop {
+    width: 100%; padding: 22px 16px; background: var(--surface); color: var(--ink); cursor: pointer;
+    border: 1.5px dashed var(--line); border-radius: 8px; font: inherit; text-align: center;
+    display: flex; flex-direction: column; gap: 4px; align-items: center;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop b { font-weight: 600; }
+  .thumbs { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .thumb { position: relative; overflow: hidden; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb .pg { position: absolute; left: 6px; bottom: 6px; background: var(--ink); color: var(--bg); padding: 1px 6px; border-radius: 3px; font: 11px ui-monospace, Menlo, Consolas, monospace; }
+  .thumb .rm {
+    position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; padding: 0; border-radius: 50%;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 600 15px/1 inherit; cursor: pointer;
+  }
+  .thumb .rm:hover { color: var(--danger); border-color: var(--danger); }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .row.between { justify-content: space-between; }
+  label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  select {
+    font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px; padding: 9px 10px; min-width: 0; max-width: 100%;
+  }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .btn {
+    font: 600 14px/1.2 inherit; padding: 10px 16px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  }
+  .btn:hover:not(:disabled) { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn:focus-visible, .drop:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  textarea {
+    display: block; width: 100%; min-height: 24rem; resize: vertical; padding: 18px 20px;
+    background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+    font: 15px/1.65 "Segoe UI", "Nirmala UI", system-ui, sans-serif;
+  }
+  .hint, .status { margin: 0; font-size: 13px; color: var(--muted); }
+  .hint code { font: 12px ui-monospace, Menlo, Consolas, monospace; }
+  .status { min-height: 1.4em; }
+  .status.err { color: var(--danger); }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1>Image to Doc</h1>
+    <p class="sub">Add photos or scans of pages. The text is read on your own device, you fix anything it got wrong, then save it as a Word file. Nothing is uploaded.</p>
+  </header>
+
+  <div class="bench">
+    <section class="panel" aria-labelledby="h-src">
+      <div class="head"><h2 id="h-src">Pages</h2><span class="mono" id="count">0 added</span></div>
+      <button type="button" class="drop" id="drop">
+        <b>Drop images here or choose files</b>
+        <span class="mono">JPG, PNG, WebP, BMP. You can also paste a screenshot.</span>
+      </button>
+      <input id="file" type="file" accept="image/*" multiple hidden>
+      <ul class="thumbs" id="thumbs"></ul>
+
+      <label class="field" for="lang">Language in the image
+        <select id="lang">
+          <option value="eng">English</option>
+          <option value="guj">Gujarati</option>
+          <option value="hin">Hindi</option>
+          <option value="guj+eng">Gujarati + English</option>
+          <option value="hin+eng">Hindi + English</option>
+          <option value="eng+guj+hin">English + Gujarati + Hindi</option>
+        </select>
+      </label>
+      <div class="row">
+        <button type="button" class="btn primary" id="readBtn" disabled>Read text</button>
+        <button type="button" class="btn" id="stopBtn" hidden>Stop</button>
+      </div>
+      <div class="bar" id="bar" hidden><i id="barFill"></i></div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-doc">
+      <div class="head"><h2 id="h-doc">Document</h2><span class="mono" id="stats">0 words</span></div>
+      <textarea id="text" spellcheck="false" placeholder="The text from your images appears here. You can also type or paste text."></textarea>
+      <p class="hint">Layout marks: <code># Title</code> <code>## Heading</code> <code>- bullet</code> <code>cell | cell</code> for a table, <code>---PAGE---</code> for a page break.</p>
+      <label class="check"><input type="checkbox" id="keep"> Keep every line break (otherwise lines of one paragraph are joined)</label>
+      <div class="row between">
+        <button type="button" class="btn" id="clearBtn">Clear</button>
+        <div class="row">
+          <button type="button" class="btn" id="copyBtn">Copy text</button>
+          <button type="button" class="btn primary" id="dlBtn">Download .docx</button>
+        </div>
+      </div>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+    </section>
+  </div>
+</main>
+
+<!-- Libraries. Both load from a CDN, so you need an internet connection the first time. -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+/* ================= Word (.docx) builder ================= */
+const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const X = s => String(s)
+  .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const runXml = (t, bold) =>
+  `<w:r>${bold ? '<w:rPr><w:b/><w:bCs/></w:rPr>' : ''}<w:t xml:space="preserve">${X(t)}</w:t></w:r>`;
+const paraXml = (inner, style, ppr) =>
+  `<w:p><w:pPr>${style ? `<w:pStyle w:val="${style}"/>` : ''}${ppr || ''}</w:pPr>${inner}</w:p>`;
+
+function tableXml(rows) {
+  const cols = Math.max(...rows.map(r => r.length));
+  const w = Math.floor(9026 / cols);
+  const borders = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
+    .map(k => `<w:${k} w:val="single" w:sz="4" w:space="0" w:color="A6A6A6"/>`).join('');
+  const grid = Array(cols).fill(`<w:gridCol w:w="${w}"/>`).join('');
+  const head = rows.length > 1;
+  const trs = rows.map((r, ri) => {
+    let cells = '';
+    for (let c = 0; c < cols; c++) {
+      const t = r[c] || '';
+      const shade = ri === 0 && head ? '<w:shd w:val="clear" w:color="auto" w:fill="EDEDED"/>' : '';
+      cells += `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${shade}</w:tcPr>` +
+        `<w:p><w:pPr><w:spacing w:after="40"/></w:pPr>${t ? runXml(t, ri === 0 && head) : ''}</w:p></w:tc>`;
+    }
+    return `<w:tr>${cells}</w:tr>`;
+  }).join('');
+  return `<w:tbl><w:tblPr><w:tblW w:w="${w * cols}" w:type="dxa"/><w:tblBorders>${borders}</w:tblBorders>` +
+    `<w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="100" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr>` +
+    `<w:tblGrid>${grid}</w:tblGrid>${trs}</w:tbl><w:p/>`;
+}
+
+function bodyXml(text, keepBreaks) {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  let rows = [];     // pending table rows
+  let buf = [];      // pending plain lines of one paragraph
+  const flushTable = () => { if (rows.length) { out.push(tableXml(rows)); rows = []; } };
+  const flushPara = () => { if (buf.length) { out.push(paraXml(runXml(buf.join(' ')))); buf = []; } };
+  const flushAll = () => { flushPara(); flushTable(); };
+
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (!t) { flushAll(); continue; }
+    if (/^-{3}\s*PAGE\s*-{3}$/i.test(t)) { flushAll(); out.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>'); continue; }
+    if (t.includes('|') && t.includes('-') && /^\|?[\s:|-]+\|?$/.test(t)) continue;   // markdown table separator
+    if (t.includes(' | ') || (t.startsWith('|') && t.endsWith('|') && t.length > 2)) {
+      flushPara();
+      rows.push(t.replace(/^\|/, '').replace(/\|$/, '').split('|').map(s => s.trim()));
+      continue;
+    }
+    flushAll();
+    if (t.startsWith('## ')) out.push(paraXml(runXml(t.slice(3)), 'Heading2'));
+    else if (t.startsWith('# ')) out.push(paraXml(runXml(t.slice(2)), 'Heading1'));
+    else if (/^[-*•]\s+/.test(t)) {
+      out.push(paraXml('<w:r><w:t>•</w:t></w:r><w:r><w:tab/></w:r>' + runXml(t.replace(/^[-*•]\s+/, '')),
+        null, '<w:ind w:left="567" w:hanging="283"/>'));
+    } else if (keepBreaks) out.push(paraXml(runXml(t)));
+    else buf.push(t);
+  }
+  flushAll();
+  if (!out.length) out.push('<w:p/>');
+  return out.join('');
+}
+
+const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ${W_NS}>` +
+  `<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Nirmala UI"/>` +
+  `<w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="en-IN" w:eastAsia="en-US" w:bidi="ar-SA"/></w:rPr></w:rPrDefault>` +
+  `<w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>` +
+  `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>` +
+  `<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>` +
+  `<w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:bCs/><w:sz w:val="34"/><w:szCs w:val="34"/></w:rPr></w:style>` +
+  `<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>` +
+  `<w:pPr><w:keepNext/><w:spacing w:before="200" w:after="100"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:bCs/><w:sz w:val="27"/><w:szCs w:val="27"/></w:rPr></w:style>` +
+  `</w:styles>`;
+
+const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+  `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+  `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+  `<Default Extension="xml" ContentType="application/xml"/>` +
+  `<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
+  `<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`;
+const ROOT_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+  `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+  `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
+const DOC_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+  `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+  `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+
+async function buildDocx(text, keepBreaks) {
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${W_NS}><w:body>${bodyXml(text, keepBreaks)}` +
+    `<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', CONTENT_TYPES);
+  zip.file('_rels/.rels', ROOT_RELS);
+  zip.file('word/document.xml', doc);
+  zip.file('word/styles.xml', STYLES_XML);
+  zip.file('word/_rels/document.xml.rels', DOC_RELS);
+  return zip.generateAsync({
+    type: 'blob', compression: 'DEFLATE',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  });
+}
+
+/* ================= App ================= */
+const $ = id => document.getElementById(id);
+const ta = $('text'), statusEl = $('status');
+let files = [];            // { file, url }
+let busy = false, cancelled = false, worker = null, clearArmed = false, clearTimer = null;
+
+function setStatus(msg, err) { statusEl.textContent = msg || ''; statusEl.classList.toggle('err', !!err); }
+function updateStats() {
+  const t = ta.value.trim();
+  const n = t ? t.split(/\s+/).length : 0;
+  $('stats').textContent = n + (n === 1 ? ' word' : ' words');
+}
+function updateUI() {
+  const n = files.length;
+  $('count').textContent = n + ' added';
+  $('readBtn').disabled = !n || busy;
+  $('readBtn').textContent = n > 1 ? 'Read text from ' + n + ' pages' : 'Read text';
+  $('stopBtn').hidden = !busy;
+  $('bar').hidden = !busy;
+  $('lang').disabled = busy;
+  ta.readOnly = busy;
+}
+
+function addFiles(list) {
+  const imgs = Array.from(list).filter(f => f.type && f.type.startsWith('image/'));
+  if (!imgs.length) { setStatus('Those files are not images.', true); return; }
+  imgs.forEach(f => files.push({ file: f, url: URL.createObjectURL(f) }));
+  setStatus('');
+  renderThumbs();
+}
+function renderThumbs() {
+  const ul = $('thumbs');
+  ul.textContent = '';
+  files.forEach((f, i) => {
+    const li = document.createElement('li'); li.className = 'thumb';
+    const img = document.createElement('img'); img.src = f.url; img.alt = 'Page ' + (i + 1);
+    const pg = document.createElement('span'); pg.className = 'pg'; pg.textContent = 'P' + (i + 1);
+    const rm = document.createElement('button');
+    rm.type = 'button'; rm.className = 'rm'; rm.textContent = '×'; rm.disabled = busy;
+    rm.setAttribute('aria-label', 'Remove page ' + (i + 1));
+    rm.onclick = () => { URL.revokeObjectURL(f.url); files.splice(i, 1); renderThumbs(); };
+    li.append(img, pg, rm); ul.append(li);
+  });
+  updateUI();
+}
+$('drop').onclick = () => $('file').click();
+$('file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+['dragenter', 'dragover'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', e => { if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+document.addEventListener('paste', e => { const fl = e.clipboardData && e.clipboardData.files; if (fl && fl.length) addFiles(fl); });
+
+/* ----- OCR with Tesseract.js (runs in the browser) ----- */
+async function readText() {
+  if (busy || !files.length) return;
+  if (typeof Tesseract === 'undefined') { setStatus('The OCR library did not load. Check your internet connection and reload.', true); return; }
+  busy = true; cancelled = false; updateUI(); renderThumbs();
+  const total = files.length, lang = $('lang').value;
+  const pages = [];
+  try {
+    setStatus('Loading the ' + $('lang').selectedOptions[0].text + ' language data (first time only)...');
+    worker = await Tesseract.createWorker(lang, 1, {
+      logger: m => {
+        if (m.status === 'recognizing text' && typeof m.progress === 'number') {
+          const done = pages.length;
+          $('barFill').style.width = ((done + m.progress) / total * 100).toFixed(1) + '%';
+        }
+      }
+    });
+    for (let i = 0; i < total; i++) {
+      if (cancelled) break;
+      setStatus('Reading page ' + (i + 1) + ' of ' + total + '...');
+      const { data } = await worker.recognize(files[i].file);
+      pages.push((data.text || '').trim());
+      ta.value = pages.join('\n\n---PAGE---\n\n');
+      updateStats();
+    }
+    setStatus(cancelled ? 'Stopped. Pages read so far are kept.' : 'Done. Check the text, fix anything, then download.');
+  } catch (err) {
+    setStatus('Reading failed: ' + (err && err.message ? err.message : 'unknown error') + '. Check your internet connection and try again.', true);
+  } finally {
+    if (worker) { try { await worker.terminate(); } catch (e) {} worker = null; }
+    busy = false; $('barFill').style.width = '0'; renderThumbs();
+  }
+}
+$('readBtn').onclick = readText;
+$('stopBtn').onclick = () => { cancelled = true; if (worker) worker.terminate().catch(() => {}); };
+
+/* ----- document actions ----- */
+ta.addEventListener('input', updateStats);
+$('clearBtn').onclick = () => {
+  const b = $('clearBtn');
+  if (!ta.value.trim()) return;
+  if (!clearArmed) {
+    clearArmed = true; b.textContent = 'Click again to clear';
+    clearTimer = setTimeout(() => { clearArmed = false; b.textContent = 'Clear'; }, 3500);
+    return;
+  }
+  clearTimeout(clearTimer); clearArmed = false; b.textContent = 'Clear';
+  ta.value = ''; updateStats(); setStatus('Cleared.');
+};
+$('copyBtn').onclick = async () => {
+  try { await navigator.clipboard.writeText(ta.value); setStatus('Text copied.'); }
+  catch (e) { ta.focus(); ta.select(); setStatus('Text selected. Press Ctrl+C to copy.'); }
+};
+function fileName() {
+  const first = files[0] ? files[0].file.name.replace(/\.[^.]+$/, '') : '';
+  const base = first.replace(/[\\/:*?"<>|]+/g, '').trim();
+  return (base && base !== 'image' ? base : 'document') + '.docx';
+}
+$('dlBtn').onclick = async () => {
+  if (!ta.value.trim()) { setStatus('Add some text first.', true); return; }
+  try {
+    const blob = await buildDocx(ta.value, $('keep').checked);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    setStatus('Saved ' + a.download + ' to your downloads.');
+  } catch (e) { setStatus('Could not build the Word file: ' + e.message, true); }
+};
+
+updateStats(); updateUI();
+</script>
+</body>
+</html>
